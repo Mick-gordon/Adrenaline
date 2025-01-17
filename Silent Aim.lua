@@ -137,23 +137,23 @@ end;
 -- // Hooks
 do
 
-    local Old; Old = hookfunction(BulletHandler, function(Position, LookVector, p33, Weapon_Data, Ignore, Is_Local_Platers_Bullet, Tick)
+    local Old; Old = hookfunction(BulletHandler, function(Position, LookVector, p33, Weapon_Data, Ignore, Is_Local_Players_Bullet, Tick)
         
-        if not Is_Local_Platers_Bullet then
-            return Old(Position, LookVector, p33, Weapon_Data, Ignore, Is_Local_Platers_Bullet, Tick);
+        if not Is_Local_Players_Bullet then
+            return Old(Position, LookVector, p33, Weapon_Data, Ignore, Is_Local_Players_Bullet, Tick);
         end;
 
         if not SilentAim.Enabled then 
-            return Old(Position, LookVector, p33, Weapon_Data, Ignore, Is_Local_Platers_Bullet, Tick);
+            return Old(Position, LookVector, p33, Weapon_Data, Ignore, Is_Local_Players_Bullet, Tick);
         end;
 
         local Target = Functions:GetTarget();
         if not Target then
-            return Old(Position, LookVector, p33, Weapon_Data, Ignore, Is_Local_Platers_Bullet, Tick);
+            return Old(Position, LookVector, p33, Weapon_Data, Ignore, Is_Local_Players_Bullet, Tick);
         end;
 
         if SilentAim.WallCheck and not Functions:WallCheck(Target, Position, table.unpack(Ignore)) then 
-            return Old(Position, LookVector, p33, Weapon_Data, Ignore, Is_Local_Platers_Bullet, Tick);
+            return Old(Position, LookVector, p33, Weapon_Data, Ignore, Is_Local_Players_Bullet, Tick);
         end
 
         local TargtePosition = SilentAim.Prediction and Functions:Predict(Target, Position, Weapon_Data.Source.MuzzleVelocity) or not SilentAim.Prediction and Target.Position;
@@ -161,7 +161,7 @@ do
         
         LookVector = (TargtePosition - VerticalDrop - Position).Unit;
 
-        return Old(Position, LookVector, p33, Weapon_Data, Ignore, Is_Local_Platers_Bullet, Tick);
+        return Old(Position, LookVector, p33, Weapon_Data, Ignore, Is_Local_Players_Bullet, Tick);
     end);
 
 end;
