@@ -97,18 +97,18 @@ do
 
     function Functions:WallCheck(Target, From, ...)
         local RayParams = RaycastParams.new(); 
-		RayParams.FilterType = Enum.RaycastFilterType.Exclude;
-		RayParams.FilterDescendantsInstances = (Functions:IsAlive(LocalPlayer) and {LocalPlayer.Character, CurrentCamera, ...} or {CurrentCamera, ...}); 
-		RayParams.IgnoreWater = true;
+	RayParams.FilterType = Enum.RaycastFilterType.Exclude;
+	RayParams.FilterDescendantsInstances = (Functions:IsAlive(LocalPlayer) and {LocalPlayer.Character, CurrentCamera, ...} or {CurrentCamera, ...}); 
+	RayParams.IgnoreWater = true;
 
-		local Direction = (Target.Position - From).Unit * 5000;
-		local ray = workspace:Raycast(From, Direction, RayParams); 
+	local Direction = (Target.Position - From).Unit * 5000;
+	local ray = workspace:Raycast(From, Direction, RayParams); 
 
-		if ray and ray.Instance and ray.Instance:IsDescendantOf(Target.Parent) then 
-			return true;
-		end;
+	if ray and ray.Instance and ray.Instance:IsDescendantOf(Target.Parent) then 
+		return true;
+	end;
 
-		return false;
+	return false;
     end;
 
     function Functions:Draw(Type, Properties)
