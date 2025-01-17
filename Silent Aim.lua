@@ -156,7 +156,7 @@ do
             return Old(Position, LookVector, p33, Weapon_Data, Ignore, Is_Local_Players_Bullet, Tick);
         end
 
-        local TargtePosition = SilentAim.Prediction and Functions:Predict(Target, Position, Weapon_Data.Source.MuzzleVelocity) or not SilentAim.Prediction and Target.Position;
+        local TargtePosition = (SilentAim.Prediction and Functions:Predict(Target, Position, Weapon_Data.Source.MuzzleVelocity)) or (not SilentAim.Prediction and Target.Position);
         local VerticalDrop = Functions:CalCulateBulletDrop(Position, TargtePosition, Weapon_Data.Source.MuzzleVelocity);
         
         LookVector = (TargtePosition - VerticalDrop - Position).Unit;
