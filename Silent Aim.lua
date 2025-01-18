@@ -22,7 +22,7 @@ local SilentAim = {
     Enabled = false,
     HitPart = "Head",
     Prediction = true, -- If You Ever Don't Want It For Some Reason.
-    WallCheck = false,
+    PenCheck = false,
     
     Fov = { 
         Visible = false,
@@ -42,7 +42,7 @@ do
     end;
     
     function Functions:GetTarget()
-        local Closest, HitBox = SilentAim.Fov.Radius, nil;
+        local Closest, HitBox = (SilentAim.Fov.Radius == 0 and math.huge) or SilentAim.Fov.Radius, nil;
         
         for _,Player in Players:GetChildren() do
 
@@ -95,20 +95,55 @@ do
         return Target.Position + (Target.Velocity * Time);
     end;
 
-    function Functions:WallCheck(Target, From, ...)
-        local RayParams = RaycastParams.new(); 
-	RayParams.FilterType = Enum.RaycastFilterType.Exclude;
-	RayParams.FilterDescendantsInstances = (Functions:IsAlive(LocalPlayer) and {LocalPlayer.Character, CurrentCamera, ...} or {CurrentCamera, ...}); 
-	RayParams.IgnoreWater = true;
+    function Functions:GetWalls(Origin, Target, ...)
+        local Ignore = {CurrentCamera, ...};
+        local Walls = { };
 
-	local Direction = (Target.Position - From).Unit * 5000;
-	local ray = workspace:Raycast(From, Direction, RayParams); 
+        local Direction = Target.Position - Origin;
+        local NoMoreWalls = false;
+        
+        local function AddWall()
+            local Hit = workspace:FindPartOnRayWithIgnoreList(Ray.new(Origin, Direction), Ignore, false, true);
+            if Hit and Hit:IsDescendantOf(Target.Parent) then
+                NoMoreWalls = true;
+                return;
+            elseif Hit then
+                Walls[#Walls + 1] = Hit;
+                Ignore[#Ignore + 1] = Hit;
+            end;
+        end;
 
-	if ray and ray.Instance and ray.Instance:IsDescendantOf(Target.Parent) then 
-		return true;
-	end;
+        repeat AddWall() until NoMoreWalls;
 
-	return false;
+        return Walls;
+    end;
+
+    function Functions:PenCheck(Origin, Target, PenDepth, ...)
+        local Ignore = {CurrentCamera, ...};
+        local Direction = Target.Position - Origin;
+        local IsVisible = workspace:FindPartOnRayWithIgnoreList(Ray.new(Origin, Direction), Ignore, false, true);
+
+        if IsVisible and IsVisible:IsDescendantOf(Target.Parent) then
+            return true;
+        end;
+        
+        local Penetrated = 0;
+        for _, Wall in Functions:GetWalls(Origin, Target, ...) do
+            if Wall.CanCollide and Wall.Transparency ~= 1 then
+                local MaxExtent = Wall.Size.Magnitude * Direction.Unit;
+                local _, Enter = workspace:FindPartOnRayWithWhitelist(Ray.new(Origin, Direction), {Wall}, true)
+                local _, Exit = workspace:FindPartOnRayWithWhitelist(Ray.new(Enter + MaxExtent, -MaxExtent), {Wall}, true)
+                local Depth = (Exit - Enter).Magnitude;
+
+                if Depth > PenDepth then
+                    return false;
+                else
+                    Penetrated += Depth;
+                end;
+            end;
+        end;
+        
+        return Penetrated < PenDepth;
     end;
 
     function Functions:Draw(Type, Properties)
@@ -137,31 +172,31 @@ end;
 -- // Hooks
 do
 
-    local Old; Old = hookfunction(BulletHandler, function(Position, LookVector, p33, Weapon_Data, Ignore, Is_Local_Players_Bullet, Tick)
-        
-        if not Is_Local_Players_Bullet then
-            return Old(Position, LookVector, p33, Weapon_Data, Ignore, Is_Local_Players_Bullet, Tick);
+    local Old; Old = hookfunction(BulletHandler, function(Origin, LookVector, p33, Weapon_Data, Ignore, Is_Local_Platers_Bullet, Tick)
+
+        if not Is_Local_Platers_Bullet then
+            return Old(Origin, LookVector, p33, Weapon_Data, Ignore, Is_Local_Platers_Bullet, Tick);
         end;
 
         if not SilentAim.Enabled then 
-            return Old(Position, LookVector, p33, Weapon_Data, Ignore, Is_Local_Players_Bullet, Tick);
+            return Old(Origin, LookVector, p33, Weapon_Data, Ignore, Is_Local_Platers_Bullet, Tick);
         end;
 
         local Target = Functions:GetTarget();
         if not Target then
-            return Old(Position, LookVector, p33, Weapon_Data, Ignore, Is_Local_Players_Bullet, Tick);
+            return Old(Origin, LookVector, p33, Weapon_Data, Ignore, Is_Local_Platers_Bullet, Tick);
         end;
 
-        if SilentAim.WallCheck and not Functions:WallCheck(Target, Position, table.unpack(Ignore)) then 
-            return Old(Position, LookVector, p33, Weapon_Data, Ignore, Is_Local_Players_Bullet, Tick);
+        if SilentAim.PenCheck and not Functions:PenCheck(Origin, Target, Weapon_Data.Source.Penetration, table.unpack(Ignore)) then 
+            return Old(Origin, LookVector, p33, Weapon_Data, Ignore, Is_Local_Platers_Bullet, Tick);
         end
 
-        local TargtePosition = (SilentAim.Prediction and Functions:Predict(Target, Position, Weapon_Data.Source.MuzzleVelocity)) or (not SilentAim.Prediction and Target.Position);
-        local VerticalDrop = Functions:CalCulateBulletDrop(Position, TargtePosition, Weapon_Data.Source.MuzzleVelocity);
+        local TargtePosition = SilentAim.Prediction and Functions:Predict(Target, Origin, Weapon_Data.Source.MuzzleVelocity) or not SilentAim.Prediction and Target.Position;
+        local VerticalDrop = Functions:CalCulateBulletDrop(Origin, TargtePosition, Weapon_Data.Source.MuzzleVelocity);
         
-        LookVector = (TargtePosition - VerticalDrop - Position).Unit;
+        LookVector = (TargtePosition - VerticalDrop - Origin).Unit;
 
-        return Old(Position, LookVector, p33, Weapon_Data, Ignore, Is_Local_Players_Bullet, Tick);
+        return Old(Origin, LookVector, p33, Weapon_Data, Ignore, Is_Local_Platers_Bullet, Tick);
     end);
 
 end;
@@ -176,9 +211,9 @@ do
     local Enable = Functions:Draw("Square", {Visible = true, Filled = true, Color = Color3.fromRGB(52, 52, 52), Size = Vector2.new(122, 24), Position = Background.Position + Vector2.new(Background.Size.X/2 - 61, ListYSize), Transparency = 1, ZIndex = 10}); ListYSize = ListYSize + 29;
     local EnableText = Functions:Draw("Text", {Visible = true, Size = 17, Center = true, Position = Enable.Position + Enable.Size/2 - Vector2.new(0, 8.5), Text = "Enable", Color = Color3.fromRGB(255, 255, 255), Font = 0, ZIndex = 10, Outline = false}); 
     local EnableOutline = Functions:Draw("Square", {Visible = true, Filled = false, Color = Color3.fromRGB(255, 255, 255), Thickness = 1, Size = Enable.Size, Position = Enable.Position, Transparency = 1, ZIndex = 10});
-    local WallCheck = Functions:Draw("Square", {Visible = true, Filled = true, Color = Color3.fromRGB(52, 52, 52), Size = Vector2.new(122, 24), Position = Background.Position + Vector2.new(Background.Size.X/2 - 61, ListYSize), Transparency = 1, ZIndex = 10}); ListYSize = ListYSize + 29;
-    local WallCheckText = Functions:Draw("Text", {Visible = true, Size = 17, Center = true, Position = WallCheck.Position + WallCheck.Size/2 - Vector2.new(0, 8.5), Text = "WallCheck", Color = Color3.fromRGB(255, 255, 255), Font = 0, ZIndex = 10, Outline = false}); 
-    local WallCheckOutline = Functions:Draw("Square", {Visible = true, Filled = false, Color = Color3.fromRGB(255, 255, 255), Thickness = 1, Size = WallCheck.Size, Position = WallCheck.Position, Transparency = 1, ZIndex = 10});
+    local PenCheck = Functions:Draw("Square", {Visible = true, Filled = true, Color = Color3.fromRGB(52, 52, 52), Size = Vector2.new(122, 24), Position = Background.Position + Vector2.new(Background.Size.X/2 - 61, ListYSize), Transparency = 1, ZIndex = 10}); ListYSize = ListYSize + 29;
+    local PenCheckText = Functions:Draw("Text", {Visible = true, Size = 17, Center = true, Position = PenCheck.Position + PenCheck.Size/2 - Vector2.new(0, 8.5), Text = "Pen Check", Color = Color3.fromRGB(255, 255, 255), Font = 0, ZIndex = 10, Outline = false}); 
+    local PenCheckOutline = Functions:Draw("Square", {Visible = true, Filled = false, Color = Color3.fromRGB(255, 255, 255), Thickness = 1, Size = PenCheck.Size, Position = PenCheck.Position, Transparency = 1, ZIndex = 10});
     local Prediction = Functions:Draw("Square", {Visible = true, Filled = true, Color = Color3.fromRGB(2, 54, 8), Size = Vector2.new(122, 24), Position = Background.Position + Vector2.new(Background.Size.X/2 - 61, ListYSize), Transparency = 1, ZIndex = 10}); ListYSize = ListYSize + 29;
     local PredictionText = Functions:Draw("Text", {Visible = true, Size = 17, Center = true, Position = Prediction.Position + Prediction.Size/2 - Vector2.new(0, 8.5), Text = "Prediction", Color = Color3.fromRGB(255, 255, 255), Font = 0, ZIndex = 10, Outline = false}); 
     local PredictionOutline = Functions:Draw("Square", {Visible = true, Filled = false, Color = Color3.fromRGB(255, 255, 255), Thickness = 1, Size = Prediction.Size, Position = Prediction.Position, Transparency = 1, ZIndex = 10});
@@ -218,13 +253,13 @@ do
                     SilentAim.Enabled = true;
                     Enable.Color = Color3.fromRGB(2, 54, 8);
                 end;
-            elseif Functions:IsMouseOver(WallCheck) then
-                if SilentAim.WallCheck then
-                    SilentAim.WallCheck = false;
-                    WallCheck.Color = Color3.fromRGB(52, 52, 52);
+            elseif Functions:IsMouseOver(PenCheck) then
+                if SilentAim.PenCheck then
+                    SilentAim.PenCheck = false;
+                    PenCheck.Color = Color3.fromRGB(52, 52, 52);
                 else
-                    SilentAim.WallCheck = true;
-                    WallCheck.Color = Color3.fromRGB(2, 54, 8);
+                    SilentAim.PenCheck = true;
+                    PenCheck.Color = Color3.fromRGB(2, 54, 8);
                 end;
             elseif Functions:IsMouseOver(ShowFov) then
                 if SilentAim.Fov.Visible then
