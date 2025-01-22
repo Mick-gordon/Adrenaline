@@ -6,14 +6,36 @@ local Players = game:GetService("Players");
 local LocalPlayer = Players.LocalPlayer;
 local CurrentCamera = game:GetService("Workspace").CurrentCamera;
 local UserInputService = game:GetService("UserInputService");
+local Environment = getexecutorname and getexecutorname();
 local RunService = game:GetService("RunService");
 local Gravity = Vector3.new(0, -192, 0); -- For The Bullets!
 local Drawings = { };
 
+
 -- // Modules
-local Success, BulletHandler = pcall(require, game:GetService("ReplicatedStorage").Modules.Client.Handlers.BulletHandler);
-if not Success or not hookfunction then
-    LocalPlayer:Kick("Executor Is Not Supported, Executor Must Have hookfunction And require.");
+if Environment and string.match(string.lower(Environment), "xeno") then
+    return LocalPlayer:Kick("Xeno Is Not Supported, Executor Must Have hookfunction And require Or getgc."); -- No Idea If This Shitty External Sill Lives.
+end;
+
+local Success, BulletHandler = pcall(require, game:GetService("ReplicatedStorage").Modules.Client.Handlers.BulletHandler);  
+if (not Success and not getgc) or not hookfunction or not Drawing then
+    return LocalPlayer:Kick("Executor Is Not Supported, Executor Must Have Drawing and hookfunction And require Or getgc.");
+
+elseif getgc then -- Some Executors Have getgc But Cant require ?
+    for _,v in getgc() do
+        if typeof(v) == "Instance" then -- Xeno returns Instances.
+            return LocalPlayer:Kick("Executor Is Not Supported, Executor Must Have hookfunction And require Or getgc.");
+
+        elseif typeof(v) == "function" and debug.info(v, "n") == "" and debug.info(v, "l") == 92 then -- Not Using getinfo As If They Dont Have Working require, Then Dev Is Proably Lazy And Hasnt Made Full Debug Lib.
+            BulletHandler = v;
+            break;
+        end;
+    end;
+    
+    if not BulletHandler then
+        return LocalPlayer:Kick("Executor Is Not Supported, Executor Must Have hookfunction And require Or getgc.");
+    end;
+
 end;
 
 -- // Tables
@@ -338,5 +360,3 @@ do
     end;
 
 end;
-
-
