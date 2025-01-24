@@ -6,13 +6,13 @@ local Players = game:GetService("Players");
 local LocalPlayer = Players.LocalPlayer;
 local CurrentCamera = game:GetService("Workspace").CurrentCamera;
 local UserInputService = game:GetService("UserInputService");
-local Environment = getexecutorname and getexecutorname();
 local RunService = game:GetService("RunService");
+local HttpService = game:GetService("HttpService");
+local Environment = getexecutorname and getexecutorname();
 local Gravity = Vector3.new(0, -192, 0); -- For The Bullets!
 local Drawings = { };
 
-
--- // Modules
+-- // Module
 if Environment and string.match(string.lower(Environment), "xeno") then
     return LocalPlayer:Kick("Xeno Is Not Supported, Executor Must Have Drawing and hookfunction And require Or getgc."); -- No Idea If This Shitty External Sill Lives.
 end;
@@ -36,7 +36,6 @@ elseif getgc then -- Some Executors Have getgc But Cant require ?
 end;
 
 -- // Tables
-Keybind = "RightShift"; -- For UI
 local SilentAim = {   
     Enabled = false,
     HitPart = "Head",
@@ -46,7 +45,10 @@ local SilentAim = {
     Fov = { 
         Visible = false,
         Radius = 600
-    }
+    },
+
+    ----
+    Keybind = "RightShift"; -- For UI
 };
 
 -- // Functions
@@ -60,7 +62,7 @@ do
         return false;
     end;
     
-    function Functions:GetTarget()
+    function Functions:GetTarget(Origin, Weapon_Data, Ignore)
         local Closest, HitBox = (SilentAim.Fov.Radius == 0 and math.huge) or SilentAim.Fov.Radius, nil;
         
         for _,Player in Players:GetChildren() do
@@ -85,7 +87,11 @@ do
             local ScreenPosition, OnScreen = CurrentCamera:WorldToViewportPoint(HitPart.Position);
             local Distance = (UserInputService:GetMouseLocation() - Vector2.new(ScreenPosition.X, ScreenPosition.Y)).Magnitude;
             
-            if not OnScreen then
+            if (SilentAim.Fov.Radius ~= 0 and not OnScreen) or (SilentAim.Fov.Radius == 0 and ScreenPosition.Z <= 0) then
+                continue;
+            end;
+
+            if SilentAim.PenCheck and not Functions:PenCheck(Origin, HitPart, Weapon_Data.Source.Penetration, table.unpack(Ignore)) then 
                 continue;
             end;
             
@@ -193,24 +199,16 @@ do
 
     local Old; Old = hookfunction(BulletHandler, function(Origin, LookVector, p33, Weapon_Data, Ignore, Is_Local_Platers_Bullet, Tick)
 
-        if not Is_Local_Platers_Bullet then
+        if not Is_Local_Platers_Bullet or not SilentAim.Enabled then
             return Old(Origin, LookVector, p33, Weapon_Data, Ignore, Is_Local_Platers_Bullet, Tick);
         end;
 
-        if not SilentAim.Enabled then 
-            return Old(Origin, LookVector, p33, Weapon_Data, Ignore, Is_Local_Platers_Bullet, Tick);
-        end;
-
-        local Target = Functions:GetTarget();
+        local Target = Functions:GetTarget(Origin, Weapon_Data, Ignore);
         if not Target then
             return Old(Origin, LookVector, p33, Weapon_Data, Ignore, Is_Local_Platers_Bullet, Tick);
         end;
 
-        if SilentAim.PenCheck and not Functions:PenCheck(Origin, Target, Weapon_Data.Source.Penetration, table.unpack(Ignore)) then 
-            return Old(Origin, LookVector, p33, Weapon_Data, Ignore, Is_Local_Platers_Bullet, Tick);
-        end
-
-        local TargtePosition = SilentAim.Prediction and Functions:Predict(Target, Origin, Weapon_Data.Source.MuzzleVelocity) or not SilentAim.Prediction and Target.Position;
+        local TargtePosition = SilentAim.Prediction and Functions:Predict(Target, Origin, Weapon_Data.Source.MuzzleVelocity) or (not SilentAim.Prediction and Target.Position);
         local VerticalDrop = Functions:CalCulateBulletDrop(Origin, TargtePosition, Weapon_Data.Source.MuzzleVelocity);
         
         LookVector = (TargtePosition - VerticalDrop - Origin).Unit;
@@ -250,6 +248,77 @@ do
     local Name = Functions:Draw("Text", {Visible = true, Size = 16, Center = true, Position = Background.Position + Vector2.new(Background.Size.X/2, 15) - Vector2.new(0, 8.5), Text = "DELETEMOB | Adrenaline Silent Aim", Color = Color3.fromRGB(255, 255, 255), Font = 0, ZIndex = 10, Outline = false}); 
     local Discord = Functions:Draw("Text", {Visible = true, Size = 17, Center = true, Position = Background.Position + Vector2.new(Background.Size.X/2, Background.Size.Y - 25.5), Text = "https://discord.gg/FsApQ7YNTq", Color = Color3.fromRGB(255, 255, 255), Font = 0, ZIndex = 10, Outline = false}); 
 
+    -- // Auto Load Config
+    local function UpdateConfig()
+
+    end;
+    do
+
+        if writefile and loadfile and isfile and makefolder then
+
+            makefolder("DelteMob");
+            makefolder("DelteMob/"..game.GameId);
+
+            UpdateConfig = function()
+                writefile("DelteMob/"..game.GameId.."/Config.json", HttpService:JSONEncode(SilentAim));
+            end;
+
+            if isfile("DelteMob/"..game.GameId.."/Config.json") then
+                local Config = HttpService:JSONDecode(readfile("DelteMob/"..game.GameId.."/Config.json"));
+
+                for i,v in Config do
+                    SilentAim[i] = v;
+
+                    if i == "Enabled" then
+                        if not v then
+                            Enable.Color = Color3.fromRGB(52, 52, 52);
+                        else
+                            Enable.Color = Color3.fromRGB(2, 54, 8);
+                        end;
+                    elseif i == "HitPart" then
+                        if v == "Torso" then
+                            HitScanText.Text = "head, TORSO";
+                        else
+                            HitScanText.Text = "HEAD, torso";
+                        end;
+                    elseif i == "Prediction" then
+                        if not v then
+                            Prediction.Color = Color3.fromRGB(52, 52, 52);
+                        else
+                            Prediction.Color = Color3.fromRGB(2, 54, 8);
+                        end;
+                    elseif i == "PenCheck" then
+                        if not v then
+                            PenCheck.Color = Color3.fromRGB(52, 52, 52);
+                        else
+                            PenCheck.Color = Color3.fromRGB(2, 54, 8);
+                        end;
+                    elseif i == "Fov" then
+                        for i2, v2 in v do
+                            if i2 == "Radius" then
+                                FovRadiusNumber.Text = v2;
+                                FovRadius.Size = Vector2.new(FovRadiusBackround.Size.X * (v2 / 600), FovRadius.Size.Y);
+                            elseif i2 == "Visible" then
+                                if not v2 then
+                                    ShowFov.Color = Color3.fromRGB(52, 52, 52);
+                                else
+                                    ShowFov.Color = Color3.fromRGB(2, 54, 8);
+                                end;
+                            end;
+                        end;
+                    end;
+
+                end;
+
+            else
+                UpdateConfig();
+            end;
+
+
+        end;
+
+    end;
+
     -- // GUI Interactions
     local Dragging, StartPos, SliderDrag;
     UserInputService.InputBegan:Connect(function(Input)
@@ -263,6 +332,7 @@ do
                 FovRadius.Size = Vector2.new(FovRadiusBackround.Size.X * Ammount, FovRadius.Size.Y);
                 FovRadiusNumber.Text = math.floor(600 * Ammount);
                 SilentAim.Fov.Radius = tonumber(FovRadiusNumber.Text);
+                UpdateConfig();
             end
             if Functions:IsMouseOver(Enable) then
                 if SilentAim.Enabled then
@@ -272,6 +342,7 @@ do
                     SilentAim.Enabled = true;
                     Enable.Color = Color3.fromRGB(2, 54, 8);
                 end;
+                UpdateConfig();
             elseif Functions:IsMouseOver(PenCheck) then
                 if SilentAim.PenCheck then
                     SilentAim.PenCheck = false;
@@ -280,6 +351,7 @@ do
                     SilentAim.PenCheck = true;
                     PenCheck.Color = Color3.fromRGB(2, 54, 8);
                 end;
+                UpdateConfig();
             elseif Functions:IsMouseOver(ShowFov) then
                 if SilentAim.Fov.Visible then
                     SilentAim.Fov.Visible = false;
@@ -288,6 +360,7 @@ do
                     SilentAim.Fov.Visible = true;
                     ShowFov.Color = Color3.fromRGB(2, 54, 8);
                 end;
+                UpdateConfig();
             elseif Functions:IsMouseOver(HitScan) then
                 if HitScanText.Text == "HEAD, torso" then
                     SilentAim.HitPart = "Torso"
@@ -296,6 +369,7 @@ do
                     SilentAim.HitPart = "Head"
                     HitScanText.Text = "HEAD, torso";
                 end;
+                UpdateConfig();
             elseif Functions:IsMouseOver(Prediction) then
                 if SilentAim.Prediction then
                     SilentAim.Prediction = false;
@@ -304,8 +378,9 @@ do
                     SilentAim.Prediction = true;
                     Prediction.Color = Color3.fromRGB(2, 54, 8);
                 end;
+                UpdateConfig();
             end;
-        elseif Input.KeyCode == (Enum.KeyCode[Keybind] or Enum.KeyCode.RightShift) then
+        elseif Input.KeyCode == (Enum.KeyCode[SilentAim.Keybind] or Enum.KeyCode.RightShift) then
             if Background.Visible then
                 for i = 1, #Drawings do
                     Drawings[i].Visible = false;
@@ -328,7 +403,7 @@ do
     UserInputService.InputChanged:Connect(function() 
         if Dragging and Background.Visible then
             local Distance = StartPos - UserInputService:GetMouseLocation();
-            for i = 1, #Drawings do -- Make Sure We Move Everything
+            for i = 1, #Drawings do 
                 Drawings[i].Position = Drawings[i].Position - Distance;
                 StartPos = UserInputService:GetMouseLocation();
             end;
@@ -337,6 +412,7 @@ do
             FovRadius.Size = Vector2.new(FovRadiusBackround.Size.X * Ammount, FovRadius.Size.Y);
             FovRadiusNumber.Text = tostring(math.floor(600 * Ammount));
             SilentAim.Fov.Radius = tonumber(FovRadiusNumber.Text);
+            UpdateConfig();
         end;
     end);
 
@@ -357,3 +433,5 @@ do
     end;
 
 end;
+
+
