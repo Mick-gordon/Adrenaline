@@ -23,7 +23,7 @@ if (not Success and not getgc) or not hookfunction or not Drawing then
 
 elseif getgc then -- Some Executors Have getgc But Cant require ?
     for _,v in getgc() do
-        if typeof(v) == "function" and debug.info(v, "n") == "" and debug.info(v, "l") == 92 then -- Not Using getinfo As If They Dont Have Working require, Then Dev Is Proably Lazy And Hasnt Made Full Debug Lib.
+        if typeof(v) == "function" and debug.info(v, "n") == "" and debug.info(v, "l") == 92 then 
             BulletHandler = v;
             break;
         end;
