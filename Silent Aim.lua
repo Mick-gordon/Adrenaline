@@ -1,5 +1,4 @@
 repeat task.wait(); until game:IsLoaded();
-repeat task.wait(); until game:GetService("Players").LocalPlayer.PlayerGui.Menu.Main.Main.Options.Inventory.List.Primary.Title.Text ~= "Loading..";
 
 -- // Variables
 local Players = game:GetService("Players");
@@ -8,34 +7,16 @@ local CurrentCamera = game:GetService("Workspace").CurrentCamera;
 local UserInputService = game:GetService("UserInputService");
 local RunService = game:GetService("RunService");
 local HttpService = game:GetService("HttpService");
-local Environment = getexecutorname and getexecutorname();
-local Gravity = Vector3.new(0, -192, 0); -- For The Bullets!
-local Drawings = { };
+local ReplicatedStorage = game:GetService("ReplicatedStorage");
+local Environment = getexecutorname and string.lower(getexecutorname());
 
--- // Module
-if Environment and string.match(string.lower(Environment), "xeno") then
-    return LocalPlayer:Kick("Xeno Is Not Supported, Executor Must Have Drawing and hookfunction And require Or getgc."); -- No Idea If This Shitty External Sill Lives.
-end;
 
-local Success, BulletHandler = pcall(require, game:GetService("ReplicatedStorage").Modules.Client.Handlers.BulletHandler);  
-if (not Success and not getgc) or not hookfunction or not Drawing then
-    return LocalPlayer:Kick("Executor Is Not Supported, Executor Must Have Drawing and hookfunction And require Or getgc.");
+-- // Constants
+local Gravity = Vector3.new(0, 192, 0); -- For The Bullets!
 
-elseif getgc then -- Some Executors Have getgc But Cant require ?
-    for _,v in getgc() do
-        if typeof(v) == "function" and debug.info(v, "n") == "" and debug.info(v, "l") == 92 then 
-            BulletHandler = v;
-            break;
-        end;
-    end;
-    
-    if not BulletHandler then
-        return LocalPlayer:Kick("Executor Is Not Supported, Executor Must Have Drawing and hookfunction And require Or getgc.");
-    end;
-
-end;
 
 -- // Tables
+local Drawings = { };
 local SilentAim = {   
     Enabled = false,
     HitPart = "Head",
@@ -50,6 +31,37 @@ local SilentAim = {
     ----
     Keybind = "RightShift"; -- For UI
 };
+
+
+-- // Module
+if Environment and string.match(Environment, "xeno") then
+    return LocalPlayer:Kick("Xeno Is Not Supported, Executor Must Have Drawing and hookfunction And require Or getgc."); -- No Idea If This Shitty External Sill Lives.
+end;
+
+local Success, BulletHandler = pcall(require, ReplicatedStorage.Modules.Client.Handlers.BulletHandler);   
+if (not Success and not getgc) or not hookfunction or not Drawing then
+    return LocalPlayer:Kick("Executor Is Not Supported, Executor Must Have Drawing and hookfunction And require Or getgc.");
+
+elseif not Success and getgc then -- Some Executors Have getgc But Cant require ?
+    BulletHandler = nil;
+    for _, Function in getgc() do
+        if typeof(Function) == "function" and debug.info(Function, "n") == "" and debug.info(Function, "l") == 250 then 
+            BulletHandler = Function;
+            break;
+        end;
+    end;
+    
+    if not BulletHandler then
+        return LocalPlayer:Kick("Executor Is Not Supported, Executor Must Have Drawing and hookfunction And require Or getgc.");
+    end;
+
+end;
+
+local Success, BulletSimulator = pcall(require, ReplicatedStorage.Modules.Shared.Classes.BulletSimulator);
+if Success and debug.getconstant and typeof(debug.getconstant(BulletSimulator.Update, 6)) == "number" then
+    Gravity = Vector3.new(0, debug.getconstant(BulletSimulator.Update, 6), 0);
+end;
+
 
 -- // Functions
 local Functions = { };
@@ -105,30 +117,58 @@ do
         return HitBox;
     end;
 
-    function Functions:CalCulateBulletDrop(To, From, MuzzleVelovity) -- All Calulations Are 100% Correct I Belive I Havent Seen A Single Issue.
-        local Distance = (To - From).Magnitude;
-        local Time = Distance / MuzzleVelovity;
+    function Functions:SolveQuadratic(A, B, C)
+        local Discriminant = B^2 - 4*A*C;
+        if Discriminant < 0 then
+            return nil, nil;
+        end;
+    
+        local DiscRoot = math.sqrt(Discriminant);
+        local Root1 = (-B - DiscRoot) / (2*A);
+        local Root2 = (-B + DiscRoot) / (2*A);
+        
+        return Root1, Root2;
+    end;
+
+    function Functions:CalCulateBallisticFlightTime(Direction, MuzzleVelovity)
+        local Root1, Root2 = Functions:SolveQuadratic(
+            Gravity:Dot(Gravity) / 4,
+            Gravity:Dot(Direction) - MuzzleVelovity^2,
+            Direction:Dot(Direction)
+        );
+    
+        if Root1 and Root2 then
+            if Root1 > 0 and Root1 < Root2 then
+                return math.sqrt(Root1);
+            elseif Root2 > 0 and Root2 < Root1 then
+                return math.sqrt(Root2);
+            end;
+        end;
+        
+        return 0;
+    end;
+
+    function Functions:CalCulateBulletDrop(To, From, MuzzleVelovity) 
+        local Time = Functions:CalCulateBallisticFlightTime(To - From, MuzzleVelovity);
         local Vertical = 0.5 * Gravity * Time^2; 
         
         return Vertical;
     end;
 
     function Functions:Predict(Target, From, MuzzleVelovity)
-        local Distance = (Target.Position - From).Magnitude;
-        local Time = Distance / MuzzleVelovity;
+        local Time = Functions:CalCulateBallisticFlightTime(Target.Position - From, MuzzleVelovity);
 
         return Target.Position + (Target.Velocity * Time);
     end;
 
-    function Functions:GetWalls(Origin, Target, ...)
+    function Functions:GetWalls(Origin, Target, ...) -- TODO: Make This Non Linear and PenCheck.
         local Ignore = {CurrentCamera, ...};
         local Walls = { };
 
-        local Direction = Target.Position - Origin;
         local NoMoreWalls = false;
         
         local function AddWall()
-            local Hit = workspace:FindPartOnRayWithIgnoreList(Ray.new(Origin, Direction), Ignore, false, true);
+            local Hit = workspace:FindPartOnRayWithIgnoreList(Ray.new(Origin, Target.Position - Origin), Ignore, false, true);
             if Hit and Hit:IsDescendantOf(Target.Parent) then
                 NoMoreWalls = true;
                 return;
@@ -143,7 +183,7 @@ do
         return Walls;
     end;
 
-    function Functions:PenCheck(Origin, Target, PenDepth, ...)
+    function Functions:PenCheck(Origin, Target, PenDepth, ...) 
         local Ignore = {CurrentCamera, ...};
         local Direction = Target.Position - Origin;
         local IsVisible = workspace:FindPartOnRayWithIgnoreList(Ray.new(Origin, Direction), Ignore, false, true);
@@ -198,7 +238,7 @@ end;
 do
 
     local Old; Old = hookfunction(BulletHandler, function(Origin, LookVector, p33, Weapon_Data, Ignore, Is_Local_Platers_Bullet, Tick)
-
+            
         if not Is_Local_Platers_Bullet or not SilentAim.Enabled then
             return Old(Origin, LookVector, p33, Weapon_Data, Ignore, Is_Local_Platers_Bullet, Tick);
         end;
@@ -211,7 +251,7 @@ do
         local TargtePosition = SilentAim.Prediction and Functions:Predict(Target, Origin, Weapon_Data.Source.MuzzleVelocity) or (not SilentAim.Prediction and Target.Position);
         local VerticalDrop = Functions:CalCulateBulletDrop(Origin, TargtePosition, Weapon_Data.Source.MuzzleVelocity);
         
-        LookVector = (TargtePosition - VerticalDrop - Origin).Unit;
+        LookVector = (TargtePosition + VerticalDrop - Origin).Unit;
 
         return Old(Origin, LookVector, p33, Weapon_Data, Ignore, Is_Local_Platers_Bullet, Tick);
     end);
